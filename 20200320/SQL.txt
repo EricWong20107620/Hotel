@@ -1,0 +1,114 @@
+USE master;
+GO
+ALTER DATABASE Hotel SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+GO
+DROP DATABASE Hotel;
+CREATE DATABASE Hotel;
+USE Hotel;
+GO
+
+CREATE TABLE [Hotel].[dbo].[login_account] (
+	email VARCHAR(50) NOT NULL PRIMARY KEY,
+	login_password VARCHAR (50) NOT NULL,
+	first_name VARCHAR(50) NOT NULL,
+	last_name VARCHAR(50) NOT NULL,
+	passport VARCHAR(50) NOT NULL,
+	gender VARCHAR(50) NOT NULL,
+	phone_number VARCHAR(50) NOT NULL,
+	question_one VARCHAR(50) NOT NULL,
+	question_two VARCHAR(50) NOT NULL,
+	question_three VARCHAR(50) NOT NULL,
+	verify_code VARCHAR(50) NOT NULL,
+	verify_code_start_time datetime NOT NULL,
+	count_wrong INT NOT NULL,
+	user_role VARCHAR(50) NOT NULL,
+	user_status INT NOT NULL
+);
+
+CREATE TABLE [Hotel].[dbo].[role_page] (
+	user_role VARCHAR (50) NOT NULL,
+	page_name VARCHAR (50) NOT NULL,
+	display_name VARCHAR (50) NOT NULL,
+	sort INT NOT NULL,
+	page_status INT NOT NULL
+);
+
+GO
+
+CREATE PROCEDURE sp_register @email nvarchar(50), @password nvarchar(50), @firstName nvarchar(50), 
+								@lastName nvarchar(50), @passport nvarchar(50), 
+								@gender nvarchar(50), @phoneNumber nvarchar(50),
+								@questionOne nvarchar(50), @questionTwo nvarchar(50), @questionThree nvarchar(50), 
+								@verifyCode nvarchar(50)
+AS
+IF ((SELECT COUNT(*) FROM login_account WHERE email = @email) = 0)
+BEGIN
+	INSERT INTO login_account VALUES (@email, @password, @firstName, @lastName, @passport, @gender, @phoneNumber, 
+	@questionOne, @questionTwo, @questionThree, @verifyCode, GETDATE(), 0, 'C', 0);
+END
+ELSE
+BEGIN
+	IF ((SELECT user_status FROM login_account WHERE email = @email) = 0)
+	BEGIN
+		UPDATE login_account SET login_password = @password, first_name = @firstName, last_name = @lastName,
+		passport = @passport, gender = @gender, phone_number = @phoneNumber,
+		question_one = @questionOne, question_two = @questionTwo, question_three = @questionThree,
+		verify_code = @verifyCode, verify_code_start_time = GETDATE()
+		WHERE email = @email;
+	END
+END
+
+GO
+
+CREATE PROCEDURE sp_check_verify_code @email nvarchar(50), @verifyCode nvarchar(50), @flag nvarchar(50)
+AS
+IF (@flag = 1)
+BEGIN
+	IF ((SELECT COUNT(*) FROM login_account WHERE email = @email AND GETDATE() <= DATEADD(ss, 300, verify_code_start_time)) = 1)
+	BEGIN
+		UPDATE login_account SET email = email WHERE user_status = 999
+	END
+END
+ELSE IF (@flag = 2)
+BEGIN
+	IF ((SELECT verify_code FROM login_account WHERE email = @email and user_status = 0) = @verifyCode)
+	BEGIN
+		UPDATE login_account SET user_status = 1 WHERE email = @email;
+	END
+END
+ELSE
+BEGIN
+	IF ((SELECT verify_code FROM login_account WHERE email = @email and user_status = 0) = @verifyCode)
+	BEGIN
+		UPDATE login_account SET user_status = 1 WHERE email = @email;
+	END
+END
+
+GO
+
+CREATE PROCEDURE sp_login @email nvarchar(50), @verifyCode nvarchar(50), @flag nvarchar(50)
+AS      
+IF (@flag = 1)
+BEGIN
+	UPDATE login_account SET verify_code = @verifyCode, verify_code_start_time = GETDATE() WHERE email = @email
+END
+SELECT * FROM login_account WHERE email = @email
+
+GO
+
+CREATE PROCEDURE sp_lock_account @email nvarchar(50), @flag nvarchar(50)
+AS    
+IF (@flag = 1)
+BEGIN
+	UPDATE login_account SET count_wrong = count_wrong + 1 WHERE email = @email
+END
+ELSE IF (@flag = 2)
+BEGIN
+	UPDATE login_account SET count_wrong = count_wrong + 1, user_status = 2 WHERE email = @email
+END
+ELSE
+BEGIN
+	UPDATE login_account SET count_wrong = 0 WHERE email = @email
+END 
+
+GO
