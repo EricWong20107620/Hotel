@@ -166,7 +166,7 @@ namespace Web_Project
                                 }
                                 else
                                 {
-                                    Session["user_role"] = dt.Rows[0].Field<string>("verify_code");
+                                    Session["user_role"] = dt.Rows[0].Field<string>("user_role");
                                     Session["email"] = dt.Rows[0].Field<string>("email");
                                     Session["login_name"] = dt.Rows[0].Field<string>("last_name") + " " + dt.Rows[0].Field<string>("first_name");
                                     Response.Redirect("Client_Home.aspx");

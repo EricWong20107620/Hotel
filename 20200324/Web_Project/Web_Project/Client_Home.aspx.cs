@@ -48,7 +48,7 @@ namespace Web_Project
                 return;
             }
 
-            int result = sp_inquiry(Session["email"].ToString(), txtSubject.Text, ddlCategory.SelectedValue, txtMessage.Text, 1);
+            int result = sp_inquiry("", Session["email"].ToString(), txtSubject.Text, ddlCategory.SelectedValue, txtMessage.Text, 1);
 
             if (result >= 0)
             {
@@ -64,7 +64,7 @@ namespace Web_Project
                 lblAlert.ForeColor = Color.Red;
             }
         }
-        public int sp_inquiry(string email, string subject, string category, string message, int flag)
+        public int sp_inquiry(string id, string email, string subject, string category, string message, int flag)
         {
             SqlConnection conn = new SqlConnection(ConfigurationManager.ConnectionStrings["Hotel"].ConnectionString);
 
@@ -73,7 +73,8 @@ namespace Web_Project
                 try
                 {
                     conn.Open();
-                    SqlParameter[] parms = { new SqlParameter("@email", email),
+                    SqlParameter[] parms = { new SqlParameter("@id", id),
+                                                new SqlParameter("@email", email),
                                                 new SqlParameter("@subject", subject),
                                                 new SqlParameter("@category", category),
                                                 new SqlParameter("@message", message),
