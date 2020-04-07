@@ -1,0 +1,268 @@
+USE master;
+GO
+ALTER DATABASE Hotel SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+GO
+DROP DATABASE Hotel;
+CREATE DATABASE Hotel;
+USE Hotel;
+GO
+
+CREATE TABLE [Hotel].[dbo].[login_account] (
+	email VARCHAR(50) NOT NULL PRIMARY KEY,
+	login_password VARCHAR (50) NOT NULL,
+	first_name VARCHAR(50) NOT NULL,
+	last_name VARCHAR(50) NOT NULL,
+	passport VARCHAR(50) NOT NULL,
+	gender VARCHAR(50) NOT NULL,
+	phone_number VARCHAR(50) NOT NULL,
+	question_one VARCHAR(50) NOT NULL,
+	question_two VARCHAR(50) NOT NULL,
+	question_three VARCHAR(50) NOT NULL,
+	verify_code VARCHAR(50) NOT NULL,
+	verify_code_start_time datetime NOT NULL,
+	count_wrong INT NOT NULL,
+	user_role VARCHAR(50) NOT NULL,
+	user_status INT NOT NULL
+);
+
+--INSERT INTO login_account VALUES ('1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', GETDATE(), 0, 'S', '1')
+--INSERT INTO login_account VALUES ('2', '2', '2', '2', '2', '2', '2', '2', '2', '2', '2', GETDATE(), 0, 'C', '1')
+
+GO
+
+CREATE TABLE [Hotel].[dbo].[inquiry_master] (
+	issue_id INT NOT NULL IDENTITY PRIMARY KEY, 
+	raise_person VARCHAR(50) NOT NULL,
+	issue_subject VARCHAR(50) NOT NULL,
+	issue_category VARCHAR(50) NOT NULL,
+	create_date datetime NOT NULL,
+	inquiry_status VARCHAR(50)
+);
+
+GO
+
+CREATE TABLE [Hotel].[dbo].[inquiry_detail] (
+	issue_id INT NOT NULL, 
+	reply_person VARCHAR(50) NOT NULL,
+	message_content VARCHAR(50) NOT NULL,
+	reply_date datetime NOT NULL
+);
+
+GO
+
+CREATE TABLE [Hotel].[dbo].[role_page] (
+	user_role VARCHAR (50) NOT NULL,
+	page_name VARCHAR (50) NOT NULL,
+	display_name VARCHAR (50) NOT NULL,
+	sort INT NOT NULL,
+	page_status INT NOT NULL
+);
+
+INSERT INTO role_page VALUES ('C', 'Client_Home', 'Home', 1, 1)
+INSERT INTO role_page VALUES ('S', 'Staff_Home', 'Home', 1, 1)
+--INSERT INTO role_page VALUES ('C', 'Client_Booking_Room', 'Booking Room', 2, 1)
+INSERT INTO role_page VALUES ('C', 'Client_Inquiry_History', 'Inquiry History', 3, 1)
+INSERT INTO role_page VALUES ('S', 'Handle_Inquiry', 'Handle Inquiry', 3, 1)
+INSERT INTO role_page VALUES ('CS', 'Login', 'Logout', 99, 1)
+
+
+GO
+
+CREATE PROCEDURE sp_register @email nvarchar(50), @password nvarchar(50), @firstName nvarchar(50), 
+								@lastName nvarchar(50), @passport nvarchar(50), 
+								@gender nvarchar(50), @phoneNumber nvarchar(50),
+								@questionOne nvarchar(50), @questionTwo nvarchar(50), @questionThree nvarchar(50), 
+								@verifyCode nvarchar(50)
+AS
+IF ((SELECT COUNT(*) FROM login_account WHERE email = @email) = 0)
+BEGIN
+	INSERT INTO login_account VALUES (@email, @password, @firstName, @lastName, @passport, @gender, @phoneNumber, 
+	@questionOne, @questionTwo, @questionThree, @verifyCode, GETDATE(), 0, 'C', 0);
+END
+ELSE
+BEGIN
+	IF ((SELECT user_status FROM login_account WHERE email = @email) = 0)
+	BEGIN
+		UPDATE login_account SET login_password = @password, first_name = @firstName, last_name = @lastName,
+		passport = @passport, gender = @gender, phone_number = @phoneNumber,
+		question_one = @questionOne, question_two = @questionTwo, question_three = @questionThree,
+		verify_code = @verifyCode, verify_code_start_time = GETDATE()
+		WHERE email = @email;
+	END
+END
+
+GO
+
+CREATE PROCEDURE sp_check_verify_code @email nvarchar(50), @verifyCode nvarchar(50), @flag nvarchar(50)
+AS
+IF (@flag = 1)
+BEGIN
+	IF ((SELECT COUNT(*) FROM login_account WHERE email = @email AND GETDATE() <= DATEADD(ss, 300, verify_code_start_time)) = 1)
+	BEGIN
+		UPDATE login_account SET email = email WHERE user_status = 999
+	END
+END
+ELSE IF (@flag = 2)
+BEGIN
+	IF ((SELECT verify_code FROM login_account WHERE email = @email and user_status = 0) = @verifyCode)
+	BEGIN
+		UPDATE login_account SET user_status = 1 WHERE email = @email;
+	END
+END
+ELSE
+BEGIN
+	IF ((SELECT verify_code FROM login_account WHERE email = @email and user_status = 0) = @verifyCode)
+	BEGIN
+		UPDATE login_account SET user_status = 1 WHERE email = @email;
+	END
+END
+
+GO
+
+CREATE PROCEDURE sp_login @email nvarchar(50), @verifyCode nvarchar(50), @flag nvarchar(50)
+AS      
+IF (@flag = 1)
+BEGIN
+	UPDATE login_account SET verify_code = @verifyCode, verify_code_start_time = GETDATE() WHERE email = @email
+END
+SELECT * FROM login_account WHERE email = @email
+
+GO
+
+CREATE PROCEDURE sp_lock_account @email nvarchar(50), @flag nvarchar(50)
+AS    
+IF (@flag = 1)
+BEGIN
+	UPDATE login_account SET count_wrong = count_wrong + 1 WHERE email = @email
+END
+ELSE IF (@flag = 2)
+BEGIN
+	UPDATE login_account SET count_wrong = count_wrong + 1, user_status = 2 WHERE email = @email
+END
+ELSE
+BEGIN
+	UPDATE login_account SET count_wrong = 0 WHERE email = @email
+END 
+
+GO
+
+CREATE PROCEDURE sp_inquiry @id nvarchar(50), @email nvarchar(50), @subject nvarchar(50), @category nvarchar(50), @message nvarchar(50), @flag nvarchar(50)
+AS
+IF (@flag = 1)
+BEGIN
+	BEGIN TRY
+		BEGIN TRANSACTION
+			INSERT INTO inquiry_master VALUES (@email, @subject, @category, GETDATE(), 'P')
+			INSERT INTO inquiry_detail VALUES ((SELECT TOP 1 issue_ID FROM inquiry_master ORDER BY issue_ID DESC), @email, @message, GETDATE())
+		COMMIT TRAN
+	END TRY
+	BEGIN CATCH
+		IF @@TRANCOUNT > 0
+			ROLLBACK TRAN
+		RAISERROR ('Fail',16,1)
+	END CATCH
+END
+ELSE IF (@flag = 2)
+BEGIN
+	BEGIN TRY
+		BEGIN TRANSACTION
+			INSERT INTO inquiry_detail VALUES (@id, @email, @message, GETDATE())
+			UPDATE inquiry_master SET inquiry_status = 'P' WHERE issue_id = @id
+		COMMIT TRAN
+	END TRY
+	BEGIN CATCH
+		IF @@TRANCOUNT > 0
+			ROLLBACK TRAN
+		RAISERROR ('Fail',16,1)
+	END CATCH
+END
+ELSE IF (@flag = 3)
+BEGIN
+	BEGIN TRY
+		BEGIN TRANSACTION
+			INSERT INTO inquiry_detail VALUES (@id, @email, @message, GETDATE())
+			UPDATE inquiry_master SET inquiry_status = 'R' WHERE issue_id = @id
+		COMMIT TRAN
+	END TRY
+	BEGIN CATCH
+		IF @@TRANCOUNT > 0
+			ROLLBACK TRAN
+		RAISERROR ('Fail',16,1)
+	END CATCH
+END
+
+GO
+
+CREATE PROCEDURE sp_refresh_inquiry_master @email nvarchar(50), @status nvarchar(50), @flag nvarchar(50)
+AS
+IF (@flag = 1)
+BEGIN
+	SELECT 
+		issue_id, 
+		issue_subject, 
+		issue_category, 
+		CONVERT(VARCHAR(10), create_date, 23) AS create_date, 
+		CASE WHEN inquiry_status = 'P' THEN 'Pending' WHEN inquiry_status = 'C' THEN 'Closed' WHEN inquiry_status = 'R' THEN 'Replied' END AS inquiry_status 
+		FROM inquiry_master 
+		WHERE inquiry_status LIKE @status
+	ORDER BY create_date, issue_id DESC
+END
+ELSE IF (@flag = 2)
+BEGIN
+	SELECT 
+		issue_id, 
+		issue_subject, 
+		issue_category, 
+		CONVERT(VARCHAR(10), create_date, 23) AS create_date, 
+		CASE WHEN inquiry_status = 'P' THEN 'Pending' WHEN inquiry_status = 'C' THEN 'Closed' WHEN inquiry_status = 'R' THEN 'Replied' END AS inquiry_status 
+		FROM inquiry_master 
+		WHERE raise_person = @email AND inquiry_status LIKE @status
+	ORDER BY create_date, issue_id DESC
+END
+
+GO
+
+CREATE VIEW full_inquiry_client
+AS
+SELECT 
+	a.issue_ID, 
+	b.issue_subject, 
+	b.issue_category, 
+	b.raise_person, 
+	a.reply_person, 
+	CASE WHEN b.raise_person = a.reply_person THEN 'You' ELSE 'Staff' END + ' : ' + a.message_content AS message_content, 
+	a.reply_date, 
+	CASE WHEN b.inquiry_status = 'P' THEN 'Pending' WHEN b.inquiry_status = 'C' THEN 'Closed' WHEN b.inquiry_status = 'R' THEN 'Replied' END AS inquiry_status
+FROM inquiry_detail a
+INNER JOIN inquiry_master b ON a.issue_ID = b.issue_ID
+
+GO
+
+CREATE VIEW full_inquiry_staff
+AS
+SELECT 
+	a.issue_ID, 
+	b.issue_subject, 
+	b.issue_category, 
+	b.raise_person, 
+	a.reply_person, 
+	CASE WHEN b.raise_person = a.reply_person THEN 'Client' ELSE 'You' END + ' : ' + a.message_content AS message_content, 
+	a.reply_date, 
+	CASE WHEN b.inquiry_status = 'P' THEN 'Pending' WHEN b.inquiry_status = 'C' THEN 'Closed' WHEN b.inquiry_status = 'R' THEN 'Replied' END AS inquiry_status
+FROM inquiry_detail a
+INNER JOIN inquiry_master b ON a.issue_ID = b.issue_ID
+
+GO
+
+CREATE PROCEDURE sp_refresh_inquiry_detail @id nvarchar(50), @flag nvarchar(50)
+AS
+IF (@flag = 1)
+BEGIN
+	SELECT * FROM full_inquiry_staff WHERE issue_id = @id
+END
+ELSE IF (@flag = 2)
+BEGIN
+	SELECT * FROM full_inquiry_client WHERE issue_id = @id
+END
+
+GO
